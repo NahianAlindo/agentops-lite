@@ -22,6 +22,11 @@
 - GitHub unauthenticated API rate limit (60/hr): optional read-only token, caching.
 - Embedding model download size (first run); keep the model small.
 - Prompt injection from repository content and docs: treat as untrusted.
+- OpenTelemetry log export in Python is less mature than traces and metrics. If OTLP logs are
+  unreliable in Phase 1b, the Collector reads the JSON logs instead (filelog receiver), keeping
+  trace ids for correlation.
+- One PR per phase can get large (Phase 1 especially). Each stage is kept in its own commits so
+  the PR can be reviewed stage by stage.
 
 ## Code quality tooling: SonarQube Cloud
 

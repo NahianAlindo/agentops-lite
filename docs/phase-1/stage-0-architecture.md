@@ -21,6 +21,7 @@ backend/app/
     config.py        Settings (pydantic-settings), secrets loading
     logging.py       JSON logging, redaction filter, request-id context
     errors.py        AppError hierarchy + exception handlers
+    ratelimit.py     RateLimiter interface, Redis and in-memory implementations, middleware
   api/
     routes/health.py   /health/live, /health/ready
     routes/jobs.py     job create/get/list (minimal; workflow wired in Phase 4)
@@ -30,6 +31,7 @@ backend/app/
     base.py          declarative base, naming conventions
     models.py        SQLAlchemy models
     session.py       async engine + session factory
+    migrate.py       startup migration runner (advisory lock, bounded retry)
   repositories/      DB access (jobs, reports, events); no business logic
   vector/
     client.py        Qdrant client factory
@@ -37,6 +39,7 @@ backend/app/
   services/          business logic (job lifecycle)
 backend/alembic/     migrations
 backend/tests/       unit/ and integration/
+infra/docker/compose.dev.yml   PostgreSQL, Qdrant, Redis for local development and tests
 ```
 
 Rule: routes -> services -> repositories/vector store. Routes never touch SQLAlchemy directly.
@@ -52,6 +55,7 @@ Integrations are injected through FastAPI dependencies so tests can substitute t
 | Dev infrastructure | Minimal `infra/docker/compose.dev.yml` (PostgreSQL, Qdrant and Redis) | Needed for integration tests; Phase 8 replaces it with the full Compose setup |
 | Primary keys | UUID (v4), server-independent | Safe to expose in URLs, no enumeration |
 | Config | `pydantic-settings`; plain values from env, **secrets from files** via `secrets_dir` | Matches Section 4; same code in dev/Compose/K8s |
+| Secrets directory (dev) | Default resolved from the repository root (`<repo>/secrets`), not the working directory | The app runs from `backend/` while `secrets/` is at the repo root |
 | DB URL | Built from host/port/name/user config + password from `database_password` secret file | Password never in a URL string in config or logs |
 | Logging | stdlib `logging` + JSON formatter + redaction filter, `request_id` and (later) `trace_id` fields | No extra dependency; backend-agnostic |
 | Qdrant | `qdrant-client` async; collection created idempotently at startup of a CLI/step, not per request | Keeps request path simple |
@@ -189,9 +193,11 @@ No API secrets are stored in PostgreSQL or Qdrant.
 ## 8. Testing approach (detailed in Stage 5)
 
 - Unit: settings/secrets loading, URL validation, state transitions, error mapping, log redaction.
-- Integration: repositories and migrations against real PostgreSQL; vector store against real Qdrant.
+- Integration: repositories and migrations against real PostgreSQL; vector store against real
+  Qdrant; rate limiter against real Redis.
 - API tests with `httpx` + dependency overrides.
-- Integration tests are marked and need local Postgres + Qdrant (Docker). No paid services, no LLM.
+- Integration tests are marked and need local PostgreSQL, Qdrant and Redis (Docker). No paid
+  services, no LLM.
 
 ## 9. Cost impact
 

@@ -19,7 +19,8 @@ fails if a secret required by an enabled feature is missing or still a placehold
 
 Where the app looks:
 
-- dev: `./secrets/` (override with `SECRETS_DIR`)
+- dev: `secrets/` at the repository root, resolved independently of the working directory
+  (override with `SECRETS_DIR`)
 - Docker Compose: Compose `secrets:` mounted at `/run/secrets`
 - Kubernetes: a Secret mounted as a volume at `/run/secrets`
 - test: no secret files are read; tests inject fake values
