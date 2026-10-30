@@ -205,9 +205,8 @@ $0. PostgreSQL, Qdrant and Redis run locally in Docker (Redis OSS and Valkey are
 
 ## 10. Dependencies
 
-Definition-only libraries (`pydantic`, `pydantic-settings`, `sqlalchemy[asyncio]`) are added in
-Stage 1, because models cannot be written without them. Everything else is added in Stage 4.
-All are pinned to compatible ranges and locked in `uv.lock`.
+All Phase 1 dependencies are installed at the start of Stage 1, so every stage works against
+the real libraries. All are pinned to compatible ranges and locked in `uv.lock`.
 
 `fastapi`, `uvicorn`, `pydantic`, `pydantic-settings`, `sqlalchemy[asyncio]`, `psycopg[binary,pool]`,
 `alembic`, `qdrant-client`, `redis` (async client); dev: `httpx`. Each has a direct Phase 1 purpose.
