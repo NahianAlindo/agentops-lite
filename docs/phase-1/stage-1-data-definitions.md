@@ -170,7 +170,11 @@ inputs for `validation_error`.
 
 1. **Question:** no minimum or maximum character limit in the schema or the database (`TEXT`).
    The only bound is the request body cap (`max_request_body_bytes`, default 64 KiB), so a
-   question cannot be unbounded in practice. An empty question is not rejected by length.
+   question cannot be unbounded in practice. An empty question is rejected by a
+   non-empty check on the API request model, added in Stage 2 (not a length limit).
 2. **`repo_url`:** the cap is the `max_repo_url_length` setting (default 200, enough for any
    GitHub URL of about 160 characters). The column is `VARCHAR(2048)`, so the setting can be
    raised to 2048 without a migration; the setting is rejected above that.
+3. **Migration:** no database or migration exists yet; `0001_initial` is written in Stage 4 using
+   `VARCHAR(2048)`, so this column size needs no separate migration. A later change to the column
+   size would get its own revision.
