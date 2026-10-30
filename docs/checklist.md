@@ -1,17 +1,17 @@
 # Implementation checklist
 
 - [x] Phase 0: Repository setup and planning
-- [ ] Phase 1: Backend and data layer (FastAPI, SQLAlchemy, Alembic, Qdrant, config, logging)
-- [ ] Phase 1b (Datadog slice, early): verify Datadog access and limits; OpenTelemetry traces, metrics and logs from the API to Datadog; API dashboard and one monitor
+- [ ] Phase 1: Backend and data layer: FastAPI app; health and readiness endpoints; SQLAlchemy + Alembic with migrations on startup (advisory lock, fail fast); PostgreSQL models for jobs, reports and execution events; Qdrant collection and vector search; dev, test and production modes; file-based secrets; input validation and centralized errors; Redis-backed rate limiting with in-memory fallback, body-size limits and timeouts; structured JSON logging with redaction and request ids; OpenTelemetry seams; `infra/docker/compose.dev.yml` (PostgreSQL, Qdrant, Redis); unit and integration tests
+- [ ] Phase 1b (Datadog slice, early): verify Datadog access and limits; OpenTelemetry traces, metrics and logs from the API through an OpenTelemetry Collector to Datadog; API dashboard and one monitor
 - [ ] Phase 2: MCP server and client
 - [ ] Phase 3: RAG pipeline
 - [ ] Phase 4: Multi-agent workflow (LangGraph)
 - [ ] Phase 4b (Datadog slice, evidence): agent, MCP, RAG and LLM spans and metrics in Datadog; workflow dashboard; controlled failure demonstration; store screenshots and a trace walkthrough in docs
 - [ ] Phase 5: Frontend and API integration
-- [ ] Phase 6 (remainder after 1b and 4b: Sentry, redaction hardening, infrastructure metrics, full docs): Observability (OpenTelemetry, Datadog for traces/metrics/logs/dashboards/monitors, optional Sentry for errors)
+- [ ] Phase 6 (remainder after 1b and 4b): local route (Prometheus, Tempo, Grafana dashboards), optional Sentry for errors, redaction hardening, infrastructure metrics, full observability docs
 - [ ] Phase 7: Testing and reliability
-- [ ] Phase 8: Docker and local deployment (includes an optional `quality` Compose profile running SonarQube Community Build locally)
-- [ ] Phase 9: CI/CD (GitHub Actions); static analysis with SonarQube, quality gate as a required check
+- [ ] Phase 8: Docker and local deployment (FastAPI, PostgreSQL, Qdrant, Redis; optional Compose profiles: `observability-local`, `observability-datadog`, and `quality` for SonarQube Community Build)
+- [ ] Phase 9: CI/CD (GitHub Actions) with PostgreSQL, Qdrant and Redis service containers; static analysis with SonarQube, quality gate as a required check
 - [ ] Phase 10: Terraform and Kubernetes (local first; AKS only with explicit approval)
 - [ ] Phase 11: Public demo and documentation
 

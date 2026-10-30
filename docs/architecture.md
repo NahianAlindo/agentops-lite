@@ -11,7 +11,10 @@ React UI -> FastAPI -> LangGraph orchestrator
                          |- Documentation Researcher -> RAG -> Sentence Transformers + Qdrant
                          `- Engineering Reviewer (bounded iterations)
 FastAPI -> PostgreSQL (SQLAlchemy + Alembic)
-All components -> OpenTelemetry (OTLP) -> optional Datadog Agent -> Datadog (traces, metrics, logs)
+FastAPI -> Redis (shared rate-limit counters only; in-memory fallback)
+All components -> OpenTelemetry (OTLP) -> OpenTelemetry Collector
+                    |- local route:  Prometheus (metrics) + Tempo (traces) -> Grafana
+                    `- hosted route: Datadog (traces, metrics, logs)
 Unhandled exceptions -> optional Sentry (errors only, linked by trace id)
 ```
 
@@ -23,7 +26,9 @@ Unhandled exceptions -> optional Sentry (errors only, linked by trace id)
 - **Vite** for the frontend build.
 - Runtime dependencies are added in the phase that needs them, not up front.
 - **File-based secrets, no `.env`:** secrets are files read from a secrets directory (local `secrets/`, Compose secrets, Kubernetes Secret volumes), so the app code is identical everywhere. Azure Key Vault is deferred until cost review.
-- No Redis, Celery, Kafka or Django (per project rules).
+- **Redis for rate limiting only:** shared counters across replicas, local container (Redis OSS or
+  Valkey), never a hosted service; the app falls back to an in-memory limiter if Redis is down.
+- No Celery, Kafka or Django (per project rules).
 
 ## Phase boundaries
 
