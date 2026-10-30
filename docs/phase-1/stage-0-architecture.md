@@ -21,6 +21,7 @@ backend/app/
     config.py        Settings (pydantic-settings), secrets loading
     logging.py       JSON logging, redaction filter, request-id context
     errors.py        AppError hierarchy + exception handlers
+    ratelimit.py     RateLimiter interface, Redis and in-memory implementations, middleware
   api/
     routes/health.py   /health/live, /health/ready
     routes/jobs.py     job create/get/list (minimal; workflow wired in Phase 4)
@@ -30,6 +31,7 @@ backend/app/
     base.py          declarative base, naming conventions
     models.py        SQLAlchemy models
     session.py       async engine + session factory
+    migrate.py       startup migration runner (advisory lock, bounded retry)
   repositories/      DB access (jobs, reports, events); no business logic
   vector/
     client.py        Qdrant client factory
@@ -37,6 +39,7 @@ backend/app/
   services/          business logic (job lifecycle)
 backend/alembic/     migrations
 backend/tests/       unit/ and integration/
+infra/docker/compose.dev.yml   PostgreSQL, Qdrant, Redis for local development and tests
 ```
 
 Rule: routes -> services -> repositories/vector store. Routes never touch SQLAlchemy directly.
@@ -52,12 +55,13 @@ Integrations are injected through FastAPI dependencies so tests can substitute t
 | Dev infrastructure | Minimal `infra/docker/compose.dev.yml` (PostgreSQL, Qdrant and Redis) | Needed for integration tests; Phase 8 replaces it with the full Compose setup |
 | Primary keys | UUID (v4), server-independent | Safe to expose in URLs, no enumeration |
 | Config | `pydantic-settings`; plain values from env, **secrets from files** via `secrets_dir` | Matches Section 4; same code in dev/Compose/K8s |
+| Secrets directory (dev) | Default resolved from the repository root (`<repo>/secrets`), not the working directory | The app runs from `backend/` while `secrets/` is at the repo root |
 | DB URL | Built from host/port/name/user config + password from `database_password` secret file | Password never in a URL string in config or logs |
 | Logging | stdlib `logging` + JSON formatter + redaction filter, `request_id` and (later) `trace_id` fields | No extra dependency; backend-agnostic |
-| Qdrant | `qdrant-client` async; collection created idempotently at startup of a CLI/step, not per request | Keeps request path simple |
+| Qdrant | `qdrant-client` async; startup idempotently ensures the collection exists (no manual step); if Qdrant is down, the app starts not-ready and the next readiness check retries the setup | No extra step, consistent with migrations on startup; never per request |
 | Vector size / distance | Configured (`QDRANT_VECTOR_SIZE`, default 384, cosine) matching `all-MiniLM-L6-v2` | Final model chosen in Phase 3; config avoids a code change |
 | Errors | Single JSON envelope `{error: {code, message, request_id}}`; no stack traces to clients | Section 6, Phase 5 and 8 requirements |
-| Health | `/health/live` = process only; `/health/ready` = DB + Qdrant checks, 503 on failure | Acceptance criterion: health vs readiness are distinct |
+| Health | `/health/live` = process only; `/health/ready` = PostgreSQL and Qdrant required (503 if either fails), Redis reported as `degraded` without failing readiness | Acceptance criterion: health vs readiness are distinct; rate limiting has a fallback (3c) |
 
 ## 3a. Runtime modes: dev, test, production
 
@@ -72,8 +76,8 @@ configuration (Compose / Kubernetes); it does not imply cloud resources (Section
 | Secrets source | `./secrets/` | fake values injected by test fixtures; no real secret files read | `/run/secrets` (Compose / K8s) |
 | Required secrets | only those for features in use | none | **all required secrets must exist, else startup fails** |
 | PostgreSQL | local `agentops` database | separate `agentops_test` database, recreated per run | deployed database |
-| Redis | local container | real local Redis for integration tests; flushed per run, separate DB index | deployed Redis |
-| Qdrant | local, collection `documentation_chunks` | in-memory client or `test_`-prefixed collection, deleted after run | deployed Qdrant, collection `documentation_chunks` |
+| Redis | local container | unit tests: in-memory limiter; integration tests: real local Redis, separate DB index, flushed per run | deployed Redis |
+| Qdrant | local, collection `documentation_chunks` | unit tests: in-memory client; integration tests: real local Qdrant, `test_`-prefixed collection, deleted after run | deployed Qdrant, collection `documentation_chunks` |
 | LLM / GitHub / external network | real calls allowed (free tier) | **disabled**; mocked clients only | real calls allowed |
 | Telemetry exporters | off by default | off, forced | enabled by configuration |
 | CORS | localhost origins | n/a | explicit allowlist, no wildcard |
@@ -98,9 +102,12 @@ way in dev, test and production. Tests therefore exercise the real migrations, n
 
 - **Concurrency:** replicas may start together (Kubernetes). The runner takes a PostgreSQL
   advisory lock, so one instance migrates while the others wait, then all proceed.
-- **Failure:** if the database is unreachable or a migration fails, the app does not become
-  ready: startup fails with a logged error naming the migration, and `/health/ready` stays 503.
-  It never serves traffic against an unmigrated schema.
+- **Failure (fail fast):** if the database is unreachable, the runner retries for a bounded,
+  configurable window (default 30 s). If it still cannot connect, or a migration fails, or the
+  lock is not acquired in time, the process logs the error (naming the migration, never
+  connection secrets) and exits non-zero. Docker Compose or Kubernetes restarts it. It never
+  serves traffic against an unmigrated schema. `/health/ready` returning 503 applies only when a
+  dependency is lost *after* a successful startup.
 - **Safety:** migrations must be backward compatible with the previous app version (add before
   remove) so rolling deploys stay safe. Destructive migrations are called out in review.
 - **Overhead:** when already at head, the check is a single version lookup.
@@ -150,7 +157,8 @@ the service layer.
 - `reports`: id, job_id (FK, unique), summary, findings (JSONB), recommendations (JSONB),
   sources (JSONB), created_at.
 - `execution_events`: id, job_id (FK), sequence, event_type, component (agent/mcp/rag/llm),
-  status, duration_ms, metadata (JSONB, no prompts or source content), created_at.
+  status, duration_ms, details (JSONB, no prompts or source content; not named `metadata`,
+  which SQLAlchemy reserves on models), created_at.
 - Qdrant `documentation_chunks` collection: vector + payload (source_url, section_title,
   text, chunk_index, doc_version).
 
@@ -160,8 +168,9 @@ No API secrets are stored in PostgreSQL or Qdrant.
 
 | Failure | Behavior |
 |---|---|
-| PostgreSQL down at startup | App starts; `/health/live` OK, `/health/ready` 503; DB-backed routes return 503 `dependency_unavailable` |
-| Qdrant down | Same; readiness reports which dependency failed (name only, no connection details) |
+| PostgreSQL down at startup | Migration runner retries for the bounded window, then the process exits non-zero; the orchestrator restarts it; no traffic served (3b) |
+| PostgreSQL lost after startup | `/health/live` OK, `/health/ready` 503; DB-backed routes return 503 `dependency_unavailable` |
+| Qdrant down | App still starts but is not ready; collection setup is retried by each readiness check until it succeeds; `/health/ready` 503 naming the dependency (name only, no connection details); Qdrant-backed operations return 503 |
 | Invalid URL / question | 422 with field-level messages |
 | Unknown job id | 404 `not_found` |
 | Unexpected exception | Logged with stack trace and request_id; client gets 500 `internal_error` |
@@ -174,24 +183,31 @@ No API secrets are stored in PostgreSQL or Qdrant.
 ## 7. Observability readiness
 
 - Request-id middleware; id appears in logs, error envelopes, and response header `X-Request-ID`.
-- Log formatter reserves `trace_id` / `span_id` fields (populated in Phase 6 when OTel is on).
-- Metrics, tracing and exporters are **not** added in Phase 1. Code is structured so Phase 6
-  instrumentation wraps routes/services without touching business logic.
+- Log formatter reserves `trace_id` / `span_id` fields (populated in Phase 1b when OpenTelemetry is enabled).
+- Metrics, tracing and exporters are **not** added in Phase 1; they arrive in Phase 1b (the
+  early observability slice). Code is structured so that instrumentation wraps routes and
+  services without touching business logic.
 - Redaction filter masks secret values and sensitive keys (authorization, api_key, password, token).
 - Never log: prompts, repository file contents, secret values, full request bodies.
 
 ## 8. Testing approach (detailed in Stage 5)
 
 - Unit: settings/secrets loading, URL validation, state transitions, error mapping, log redaction.
-- Integration: repositories and migrations against real PostgreSQL; vector store against real Qdrant.
+- Integration: repositories and migrations against real PostgreSQL; vector store against real
+  Qdrant; rate limiter against real Redis.
 - API tests with `httpx` + dependency overrides.
-- Integration tests are marked and need local Postgres + Qdrant (Docker). No paid services, no LLM.
+- Integration tests are marked and need local PostgreSQL, Qdrant and Redis (Docker). No paid
+  services, no LLM.
 
 ## 9. Cost impact
 
 $0. PostgreSQL, Qdrant and Redis run locally in Docker (Redis OSS and Valkey are free; no hosted Redis). No cloud resources, no hosted services.
 
-## 10. Dependencies to add (pinned in Stage 4, not before)
+## 10. Dependencies
+
+Definition-only libraries (`pydantic`, `pydantic-settings`, `sqlalchemy[asyncio]`) are added in
+Stage 1, because models cannot be written without them. Everything else is added in Stage 4.
+All are pinned to compatible ranges and locked in `uv.lock`.
 
 `fastapi`, `uvicorn`, `pydantic`, `pydantic-settings`, `sqlalchemy[asyncio]`, `psycopg[binary,pool]`,
 `alembic`, `qdrant-client`, `redis` (async client); dev: `httpx`. Each has a direct Phase 1 purpose.
@@ -204,8 +220,10 @@ $0. PostgreSQL, Qdrant and Redis run locally in Docker (Redis OSS and Valkey are
 4. Rate limiting is in Phase 1 scope (see 3c). Defaults approved: 5/min job creation, 60/min reads.
 5. Embedding default stays 384 dimensions with cosine distance; revisit in Phase 3.
 6. Redis is approved, scoped to rate limiting only, local container, in-memory fallback.
-   This is an exception to the "no Redis" default and needs the project plan updated.
+   This is an exception to the "no Redis" default; the project plan is updated accordingly.
 7. Ingress-level rate limiting is wanted later (Phase 10).
+8. The Qdrant collection is ensured at startup (idempotent); if Qdrant is down, readiness
+   checks retry the setup.
 
 ## 12. Open questions for the reviewer
 
