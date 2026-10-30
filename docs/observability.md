@@ -28,6 +28,10 @@ disabled (`OTEL_ENABLED=false`) and when Datadog or Sentry is unreachable.
   is available and activated. Eligibility, limits and expiry must be verified before enabling; a
   paid plan will not be enabled. If the offer or a trial ends, set `OTEL_ENABLED=false`; the
   application is unaffected.
+- The author's GitHub Student Developer Pack runs until December 2026 (renewal not assumed).
+  Datadog benefits tied to the pack may end then, so: capture Datadog evidence (dashboards,
+  traces, the failure demonstration) while access is active, store it in the repository docs,
+  and keep the app fully functional with Datadog disabled afterwards.
 - Sentry is used only if its current free allowance meets the needs.
 - API keys (`datadog_api_key`, `sentry_dsn`) are secret files, never committed.
 
