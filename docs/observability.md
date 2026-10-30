@@ -1,17 +1,40 @@
 # Observability plan
 
-OpenTelemetry is the single instrumentation layer; exporters are env-configured and optional.
-The app must run with every exporter disabled (`OTEL_ENABLED=false`).
+OpenTelemetry is the single instrumentation layer. Telemetry leaves the app over OTLP to a
+Datadog Agent; exporters are env-configured and optional. The app must run with every exporter
+disabled (`OTEL_ENABLED=false`) and when Datadog or Sentry is unreachable.
 
 | Signal | Plan |
 |---|---|
 | Traces | FastAPI, outgoing HTTP, agent runs, MCP tool calls, embedding, Qdrant retrieval, LLM calls, all under one request trace |
-| Metrics | API (count, latency, errors), agents (jobs, duration, iterations, timeouts), LLM (latency, failures, tokens), MCP, RAG, infra |
+| Metrics | API (count, latency, errors), agents (jobs, duration, iterations, timeouts), LLM (latency, failures, tokens), MCP, RAG, rate limiter, infra |
 | Logs | Structured JSON with trace/span IDs; secrets, prompts and file contents redacted |
-| Local stack | Prometheus + Grafana via a Docker Compose profile |
-| Hosted | Datadog only if the student offer is eligible; Sentry only if it adds value |
+| Dashboards and monitors | Datadog: API health, agent performance, LLM latency, RAG retrieval, errors; monitors for failure rate and latency |
+| Infrastructure | Datadog Agent: CPU/memory, container restarts, pod readiness, HPA replica counts (Kubernetes phase) |
+| Errors | Sentry (optional): unhandled exceptions only, with release info and trace id; no traces or metrics sent there |
 
-Rules: no user IDs, repo URLs or raw queries in metric labels; no prompts or source content in
-telemetry by default; no telemetry to multiple hosted platforms without a reason.
+## Division of responsibility
 
-Implementation lands in Phases 1 (logging, instrumentation hooks), 4 (agent/LLM spans) and 6 (full setup).
+- **Datadog** receives traces, metrics and logs. It is the single place to follow a request.
+- **Sentry** receives exceptions only, so no telemetry is duplicated across platforms. Each event
+  carries the trace id, so it links back to the Datadog trace.
+- **Local development** without Datadog: exporters are off, or an OpenTelemetry console exporter
+  can print spans for debugging. There are no local dashboards; this is a trade-off of dropping
+  Prometheus and Grafana.
+
+## Cost and eligibility
+
+- Datadog is used only if the GitHub Student Developer Pack offer (or a suitable free allowance)
+  is available and activated. Eligibility, limits and expiry must be verified before enabling; a
+  paid plan will not be enabled. If the offer or a trial ends, set `OTEL_ENABLED=false`; the
+  application is unaffected.
+- Sentry is used only if its current free allowance meets the needs.
+- API keys (`datadog_api_key`, `sentry_dsn`) are secret files, never committed.
+
+## Rules
+
+No user IDs, repo URLs or raw queries in metric labels (high cardinality); no prompts or source
+content in telemetry by default; redaction applies to logs, traces and error events before export.
+
+Implementation lands in Phases 1 (logging, instrumentation hooks), 4 (agent/LLM spans) and
+6 (full setup).

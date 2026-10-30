@@ -6,7 +6,7 @@
 - [ ] Phase 3: RAG pipeline
 - [ ] Phase 4: Multi-agent workflow (LangGraph)
 - [ ] Phase 5: Frontend and API integration
-- [ ] Phase 6: Observability (OTel, metrics, Prometheus, Grafana, optional Datadog/Sentry)
+- [ ] Phase 6: Observability (OpenTelemetry, Datadog for traces/metrics/logs/dashboards/monitors, optional Sentry for errors)
 - [ ] Phase 7: Testing and reliability
 - [ ] Phase 8: Docker and local deployment (includes an optional `quality` Compose profile running SonarQube Community Build locally)
 - [ ] Phase 9: CI/CD (GitHub Actions); static analysis with SonarQube, quality gate as a required check
