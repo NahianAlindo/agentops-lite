@@ -21,17 +21,19 @@
 - Embedding model download size (first run); keep the model small.
 - Prompt injection from repository content and docs: treat as untrusted.
 
-## Code quality tooling: SonarQube
+## Code quality tooling: SonarQube Cloud
 
-- **Local:** SonarQube Community Build (free, self-hosted) in a Docker Compose `quality`
-  profile, started on demand. Analyzes Python and TypeScript with pytest coverage reports.
-- **CI:** SonarQube Cloud free plan for this public repository is the candidate for GitHub
-  Actions, because it supports pull request analysis. To be confirmed in Phase 9 against the
-  plan's current limits before enabling; no paid plan will be enabled.
-- **Secrets:** the Sonar token is a secret file locally and a GitHub Actions secret in CI.
-- **Caveats:** the local server needs about 2 GB of RAM and, on Windows, a WSL2
-  `vm.max_map_count` setting for its embedded search engine. The Community Build analyzes
-  only the main branch, not pull requests.
-- **Scope:** configuration (`sonar-project.properties`) and the quality gate arrive in Phases 8
-  and 9. Ruff and pytest remain the primary checks; Sonar adds analysis and coverage tracking.
-
+- **Primary:** SonarQube Cloud (sonarcloud.io) free plan, as used on the hindcast-lakehouse
+  project. The repository is public, which the free plan requires. Organization `nahianalindo`,
+  project key `NahianAlindo_agentops-lite`.
+- **Setup:** import the repository from the SonarQube Cloud dashboard. Automatic analysis needs no
+  scanner config or token. It does not ingest test coverage, so if coverage tracking is wanted,
+  Phase 9 adds CI-based analysis (a GitHub Actions scan step with a `SONAR_TOKEN` secret).
+- **Quality gate:** once the project exists, add the SonarQube Cloud check as a required status
+  check on `main` (Phase 9).
+- **Optional local:** SonarQube Community Build in an on-demand Docker Compose `quality` profile
+  (Phase 8) for offline scans. It needs about 2 GB of RAM and, on Windows with WSL2, a raised
+  `vm.max_map_count`. It analyzes only the main branch.
+- **Limits:** re-check the free plan's current limits before relying on it. No paid plan will be
+  enabled. No source leaves the machine beyond what the public repository already exposes.
+- **Complements, does not replace:** Ruff and pytest remain the primary checks.
