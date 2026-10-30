@@ -22,6 +22,22 @@ disabled (`OTEL_ENABLED=false`) and when Datadog or Sentry is unreachable.
   can print spans for debugging. There are no local dashboards; this is a trade-off of dropping
   Prometheus and Grafana.
 
+## Sequencing: Datadog slice pulled forward
+
+The Student Pack deadline (below) means Datadog work is not left to Phase 6. It is split into two
+checkpoints, each delivered through the normal 0-6 stage workflow with its own PRs:
+
+- **Phase 1b (right after Phase 1):** confirm Datadog access, plan limits and expiry; enable
+  OpenTelemetry in the API; send request traces, API metrics and correlated logs through a
+  Datadog Agent; build an API dashboard and one monitor. This proves ingestion early.
+- **Phase 4b (right after Phase 4):** add agent, MCP, RAG and LLM spans and metrics; build the
+  workflow dashboard; run a controlled failure demonstration; capture screenshots and a trace
+  walkthrough into the repository docs while access is active.
+
+Spans for MCP (Phase 2) and RAG (Phase 3) are added as part of those phases, so 4b only has to
+connect and demonstrate them. Phase 6 keeps the rest: Sentry, redaction hardening, infrastructure
+metrics, and final documentation.
+
 ## Cost and eligibility
 
 - Datadog is used only if the GitHub Student Developer Pack offer (or a suitable free allowance)

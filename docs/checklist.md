@@ -2,11 +2,13 @@
 
 - [x] Phase 0: Repository setup and planning
 - [ ] Phase 1: Backend and data layer (FastAPI, SQLAlchemy, Alembic, Qdrant, config, logging)
+- [ ] Phase 1b (Datadog slice, early): verify Datadog access and limits; OpenTelemetry traces, metrics and logs from the API to Datadog; API dashboard and one monitor
 - [ ] Phase 2: MCP server and client
 - [ ] Phase 3: RAG pipeline
 - [ ] Phase 4: Multi-agent workflow (LangGraph)
+- [ ] Phase 4b (Datadog slice, evidence): agent, MCP, RAG and LLM spans and metrics in Datadog; workflow dashboard; controlled failure demonstration; store screenshots and a trace walkthrough in docs
 - [ ] Phase 5: Frontend and API integration
-- [ ] Phase 6: Observability (OpenTelemetry, Datadog for traces/metrics/logs/dashboards/monitors, optional Sentry for errors)
+- [ ] Phase 6 (remainder after 1b and 4b: Sentry, redaction hardening, infrastructure metrics, full docs): Observability (OpenTelemetry, Datadog for traces/metrics/logs/dashboards/monitors, optional Sentry for errors)
 - [ ] Phase 7: Testing and reliability
 - [ ] Phase 8: Docker and local deployment (includes an optional `quality` Compose profile running SonarQube Community Build locally)
 - [ ] Phase 9: CI/CD (GitHub Actions); static analysis with SonarQube, quality gate as a required check
