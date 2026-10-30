@@ -11,7 +11,8 @@ React UI -> FastAPI -> LangGraph orchestrator
                          |- Documentation Researcher -> RAG -> Sentence Transformers + Qdrant
                          `- Engineering Reviewer (bounded iterations)
 FastAPI -> PostgreSQL (SQLAlchemy + Alembic)
-All components -> OpenTelemetry -> optional exporters (Prometheus, Datadog, Sentry)
+All components -> OpenTelemetry (OTLP) -> optional Datadog Agent -> Datadog (traces, metrics, logs)
+Unhandled exceptions -> optional Sentry (errors only, linked by trace id)
 ```
 
 ## Key decisions

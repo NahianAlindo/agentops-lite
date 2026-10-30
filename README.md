@@ -2,7 +2,7 @@
 
 Multi-agent application that investigates a public GitHub repository and produces an
 evidence-based engineering report. Built to demonstrate LangGraph orchestration, a custom
-MCP server, RAG, observability (OpenTelemetry, Prometheus, Grafana), CI/CD, Terraform and
+MCP server, RAG, observability (OpenTelemetry, Datadog, Sentry), CI/CD, Terraform and
 Kubernetes autoscaling, at $0 recurring cost.
 
 **Status:** Phase 0 (repository setup) complete. See [docs/checklist.md](docs/checklist.md).
@@ -15,7 +15,7 @@ Kubernetes autoscaling, at $0 recurring cost.
 | `frontend/` | React + TypeScript UI (Vite) |
 | `infra/docker`, `infra/k8s`, `infra/terraform` | Containers, manifests, IaC (later phases) |
 | `secrets/` | Local secret files (gitignored, never committed); see [docs/secrets.md](docs/secrets.md) |
-| `monitoring/` | Prometheus and Grafana config (Phase 6) |
+| `monitoring/` | Datadog Agent config, dashboards and monitors (Phase 6) |
 | `docs/` | Architecture, checklist, observability plan |
 
 ## Local development
