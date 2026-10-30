@@ -5,13 +5,20 @@ description = "Multi-agent GitHub repository investigation service"
 requires-python = ">=3.12,<3.13"
 # Runtime dependencies are added phase by phase to keep each phase reviewable.
 dependencies = [
+    "alembic>=1.20.1,<2",
+    "fastapi>=0.162.0,<1",
+    "psycopg[binary,pool]>=3.3.6,<4",
     "pydantic>=2.9,<3",
     "pydantic-settings>=2.6,<3",
+    "qdrant-client>=1.20.0,<2",
+    "redis>=8.1.0,<9",
     "sqlalchemy[asyncio]>=2.0.36,<2.1",
+    "uvicorn[standard]>=0.54.0,<1",
 ]
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1,<1",
     "pytest>=8.3,<9",
     "pytest-asyncio>=0.24,<2",
     "ruff>=0.8,<1",
