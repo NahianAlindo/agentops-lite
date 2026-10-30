@@ -4,7 +4,11 @@ version = "0.1.0"
 description = "Multi-agent GitHub repository investigation service"
 requires-python = ">=3.12,<3.13"
 # Runtime dependencies are added phase by phase to keep each phase reviewable.
-dependencies = []
+dependencies = [
+    "pydantic>=2.9,<3",
+    "pydantic-settings>=2.6,<3",
+    "sqlalchemy[asyncio]>=2.0.36,<2.1",
+]
 
 [dependency-groups]
 dev = [
