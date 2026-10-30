@@ -48,8 +48,8 @@ Integrations are injected through FastAPI dependencies so tests can substitute t
 |---|---|---|
 | DB driver / mode | SQLAlchemy 2.0 **async** + `psycopg` 3 | Avoids blocking the event loop; one driver for app and Alembic |
 | Migrations | Alembic, **applied automatically on app startup in every mode** (same code path in dev, test, production) | No manual step; identical behavior everywhere. See 3b |
-| Rate limiting | In-process per-client limiter, in scope for Phase 1 | No Redis allowed; see 3c |
-| Dev infrastructure | Minimal `infra/docker/compose.dev.yml` (PostgreSQL + Qdrant only) | Needed for integration tests; Phase 8 replaces it with the full Compose setup |
+| Rate limiting | Redis-backed limiter shared across replicas, with in-memory fallback; in scope for Phase 1 | Counters must be global across replicas; see 3c |
+| Dev infrastructure | Minimal `infra/docker/compose.dev.yml` (PostgreSQL, Qdrant and Redis) | Needed for integration tests; Phase 8 replaces it with the full Compose setup |
 | Primary keys | UUID (v4), server-independent | Safe to expose in URLs, no enumeration |
 | Config | `pydantic-settings`; plain values from env, **secrets from files** via `secrets_dir` | Matches Section 4; same code in dev/Compose/K8s |
 | DB URL | Built from host/port/name/user config + password from `database_password` secret file | Password never in a URL string in config or logs |
@@ -72,6 +72,7 @@ configuration (Compose / Kubernetes); it does not imply cloud resources (Section
 | Secrets source | `./secrets/` | fake values injected by test fixtures; no real secret files read | `/run/secrets` (Compose / K8s) |
 | Required secrets | only those for features in use | none | **all required secrets must exist, else startup fails** |
 | PostgreSQL | local `agentops` database | separate `agentops_test` database, recreated per run | deployed database |
+| Redis | local container | real local Redis for integration tests; flushed per run, separate DB index | deployed Redis |
 | Qdrant | local, collection `documentation_chunks` | in-memory client or `test_`-prefixed collection, deleted after run | deployed Qdrant, collection `documentation_chunks` |
 | LLM / GitHub / external network | real calls allowed (free tier) | **disabled**; mocked clients only | real calls allowed |
 | Telemetry exporters | off by default | off, forced | enabled by configuration |
@@ -106,18 +107,29 @@ way in dev, test and production. Tests therefore exercise the real migrations, n
 
 ## 3c. Rate limiting (Phase 1)
 
-Required by the security requirements and not deferred.
+Required by the security requirements and not deferred. Counters are shared across replicas, so
+a client cannot multiply its limit by hitting different pods.
 
-- **Mechanism:** token-bucket limiter in middleware, in process (no Redis or other new
-  infrastructure). Keyed by client IP, taken from the connection, or from `X-Forwarded-For` only
-  when a trusted proxy setting is enabled. The key is never used as a metric label or logged raw.
-- **Tiers:** a stricter limit for job creation (the expensive endpoint, later backed by LLM calls)
-  and a looser global limit for reads. Health endpoints are exempt.
+- **Store:** Redis, used **only** for rate-limit counters in this phase (not caching, queues, or
+  job state). Redis OSS runs as a local container ($0). Valkey is a protocol-compatible drop-in if
+  the Redis license is a concern; no code change would be needed. No hosted Redis (it costs money).
+- **Algorithm:** fixed or sliding window counter via an atomic Lua script / `INCR` + `EXPIRE`, so
+  concurrent replicas cannot race. Implemented in middleware behind a small `RateLimiter`
+  interface so the store is swappable.
+- **Key:** client IP from the connection, or from `X-Forwarded-For` only when a trusted-proxy
+  setting is enabled. Stored as a hash with a short TTL; never logged raw and never a metric label.
+- **Tiers:** stricter for job creation (later backed by LLM calls), looser for reads. Health
+  endpoints are exempt. Defaults (approved): **5 requests/min for job creation, 60/min for reads**,
+  as configuration values.
 - **Response:** HTTP 429 with the standard error envelope and a `Retry-After` header.
+- **Redis unavailable:** the limiter degrades to a per-process in-memory limiter and logs a
+  warning; the app keeps working. It does not fail open to unlimited traffic and does not block
+  requests. Readiness reports Redis as degraded but not failed, because rate limiting is not
+  required for correctness.
 - **Also enforced:** maximum request body size and request timeouts.
-- **Limit of the approach:** counters are per replica, so effective limits scale with replica
-  count. This is acceptable for the demo scale and is documented. Limits are configuration values.
 - **Modes:** enabled in all modes; test mode uses small limits so the behavior is testable.
+- **Future:** an ingress-level limit in Phase 10 as an additional outer layer (approved), not a
+  replacement for the application limiter.
 
 ## 4. Data flow (Phase 1)
 
@@ -157,6 +169,7 @@ No API secrets are stored in PostgreSQL or Qdrant.
 | Pool exhaustion / slow DB | Bounded pool and statement/connection timeouts; surfaced as 503 |
 | Migration fails or lock not acquired in time | Startup aborts with a logged error; not ready; no traffic served |
 | Rate limit exceeded | 429 `rate_limited` with `Retry-After` |
+| Redis down | Limiter falls back to in-memory per process; warning logged; readiness shows `degraded` for Redis, app stays ready |
 
 ## 7. Observability readiness
 
@@ -176,23 +189,24 @@ No API secrets are stored in PostgreSQL or Qdrant.
 
 ## 9. Cost impact
 
-$0. PostgreSQL and Qdrant run locally in Docker. No cloud resources, no hosted services.
+$0. PostgreSQL, Qdrant and Redis run locally in Docker (Redis OSS and Valkey are free; no hosted Redis). No cloud resources, no hosted services.
 
 ## 10. Dependencies to add (pinned in Stage 4, not before)
 
 `fastapi`, `uvicorn`, `pydantic`, `pydantic-settings`, `sqlalchemy[asyncio]`, `psycopg[binary,pool]`,
-`alembic`, `qdrant-client`; dev: `httpx`. Each has a direct Phase 1 purpose.
+`alembic`, `qdrant-client`, `redis` (async client); dev: `httpx`. Each has a direct Phase 1 purpose.
 
 ## 11. Resolved decisions (from review)
 
-1. `infra/docker/compose.dev.yml` with PostgreSQL and Qdrant only is approved; Phase 8 replaces it.
+1. `infra/docker/compose.dev.yml` is approved; Phase 8 replaces it.
 2. The exact API surface for jobs is decided in Stage 2 (API and interface design), not here.
 3. Migrations run automatically at startup in every mode, with no extra step (see 3b).
-4. Rate limiting is in Phase 1 scope (see 3c).
+4. Rate limiting is in Phase 1 scope (see 3c). Defaults approved: 5/min job creation, 60/min reads.
 5. Embedding default stays 384 dimensions with cosine distance; revisit in Phase 3.
+6. Redis is approved, scoped to rate limiting only, local container, in-memory fallback.
+   This is an exception to the "no Redis" default and needs the project plan updated.
+7. Ingress-level rate limiting is wanted later (Phase 10).
 
 ## 12. Open questions for the reviewer
 
-1. Rate limit defaults (requests per minute for job creation and for reads)? Proposal: 5/min for
-   job creation and 60/min for reads per client, as configuration values.
-2. Is per-replica rate limiting acceptable, given Redis is excluded by project rules?
+None outstanding. Review the design and approve to start Stage 1.
