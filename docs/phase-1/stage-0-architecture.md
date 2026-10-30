@@ -58,7 +58,7 @@ Integrations are injected through FastAPI dependencies so tests can substitute t
 | Secrets directory (dev) | Default resolved from the repository root (`<repo>/secrets`), not the working directory | The app runs from `backend/` while `secrets/` is at the repo root |
 | DB URL | Built from host/port/name/user config + password from `database_password` secret file | Password never in a URL string in config or logs |
 | Logging | stdlib `logging` + JSON formatter + redaction filter, `request_id` and (later) `trace_id` fields | No extra dependency; backend-agnostic |
-| Qdrant | `qdrant-client` async; collection created idempotently at startup of a CLI/step, not per request | Keeps request path simple |
+| Qdrant | `qdrant-client` async; startup idempotently ensures the collection exists (no manual step); if Qdrant is down, the app starts not-ready and the next readiness check retries the setup | No extra step, consistent with migrations on startup; never per request |
 | Vector size / distance | Configured (`QDRANT_VECTOR_SIZE`, default 384, cosine) matching `all-MiniLM-L6-v2` | Final model chosen in Phase 3; config avoids a code change |
 | Errors | Single JSON envelope `{error: {code, message, request_id}}`; no stack traces to clients | Section 6, Phase 5 and 8 requirements |
 | Health | `/health/live` = process only; `/health/ready` = PostgreSQL and Qdrant required (503 if either fails), Redis reported as `degraded` without failing readiness | Acceptance criterion: health vs readiness are distinct; rate limiting has a fallback (3c) |
@@ -170,7 +170,7 @@ No API secrets are stored in PostgreSQL or Qdrant.
 |---|---|
 | PostgreSQL down at startup | Migration runner retries for the bounded window, then the process exits non-zero; the orchestrator restarts it; no traffic served (3b) |
 | PostgreSQL lost after startup | `/health/live` OK, `/health/ready` 503; DB-backed routes return 503 `dependency_unavailable` |
-| Qdrant down | App still starts; `/health/ready` 503 naming the dependency (name only, no connection details); Qdrant-backed operations return 503 |
+| Qdrant down | App still starts but is not ready; collection setup is retried by each readiness check until it succeeds; `/health/ready` 503 naming the dependency (name only, no connection details); Qdrant-backed operations return 503 |
 | Invalid URL / question | 422 with field-level messages |
 | Unknown job id | 404 `not_found` |
 | Unexpected exception | Logged with stack trace and request_id; client gets 500 `internal_error` |
@@ -222,6 +222,8 @@ All are pinned to compatible ranges and locked in `uv.lock`.
 6. Redis is approved, scoped to rate limiting only, local container, in-memory fallback.
    This is an exception to the "no Redis" default; the project plan is updated accordingly.
 7. Ingress-level rate limiting is wanted later (Phase 10).
+8. The Qdrant collection is ensured at startup (idempotent); if Qdrant is down, readiness
+   checks retry the setup.
 
 ## 12. Open questions for the reviewer
 
