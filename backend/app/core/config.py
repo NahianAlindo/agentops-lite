@@ -12,6 +12,7 @@ from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.enums import AppEnv
+from app.core.limits import REPO_URL_COLUMN_LENGTH
 
 # backend/app/core/config.py -> repository root. The app runs from backend/, but the dev
 # secrets directory lives at the repository root.
@@ -65,6 +66,10 @@ class Settings(BaseSettings):
     rate_limit_job_create_per_minute: int = Field(default=5, gt=0)
     rate_limit_read_per_minute: int = Field(default=60, gt=0)
     max_request_body_bytes: int = Field(default=64 * 1024, gt=0)
+    # Cap on the submitted repository URL. GitHub URLs are at most about 160 characters; the
+    # database column allows raising this up to REPO_URL_COLUMN_LENGTH without a migration.
+    # The question has no length limit of its own; max_request_body_bytes bounds it.
+    max_repo_url_length: int = Field(default=200, ge=1, le=REPO_URL_COLUMN_LENGTH)
     request_timeout_s: float = Field(default=30.0, gt=0)
 
     # --- Telemetry (exporters are wired in Phase 1b) ---

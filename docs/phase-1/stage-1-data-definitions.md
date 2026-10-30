@@ -26,7 +26,7 @@ Rendered from the models with the PostgreSQL dialect (this is what migration `00
 ```sql
 CREATE TABLE analysis_jobs (
   id UUID NOT NULL,
-  repo_url VARCHAR(200) NOT NULL,
+  repo_url VARCHAR(2048) NOT NULL,
   question TEXT NOT NULL,
   status VARCHAR(9) DEFAULT 'queued' NOT NULL,
   error_code VARCHAR(50),
@@ -122,7 +122,7 @@ Plain settings come from environment variables; secrets come from files named af
 | PostgreSQL | `database_host`, `database_port`, `database_name`, `database_user`, pool size and overflow, connect timeout, statement timeout, `migration_retry_window_s` | `database_password` (required) |
 | Qdrant | `qdrant_url`, `qdrant_collection`, `qdrant_vector_size`, `qdrant_distance` | `qdrant_api_key` (optional) |
 | Redis | `redis_url` | `redis_password` (optional in Stage 1; required when Redis is configured, enforced in Stage 4) |
-| Request limits | `rate_limit_enabled`, job-create and read limits per minute, `max_request_body_bytes`, `request_timeout_s` | |
+| Request limits | `rate_limit_enabled`, job-create and read limits per minute, `max_request_body_bytes`, `max_repo_url_length`, `request_timeout_s` | |
 | Telemetry | `otel_enabled`, `otel_service_name`, `otel_exporter_otlp_endpoint` | |
 
 - Defaults match Stage 0: 5 job creations and 60 reads per minute, 64 KiB request body, 30 s
@@ -166,7 +166,11 @@ inputs for `validation_error`.
   definition.
 - **Added `SourceKind` and `DependencyState` enums**, needed by the evidence and readiness shapes.
 
-## 9. Questions for the reviewer
+## 9. Decisions from review
 
-1. Question length: 10 to 2000 characters. OK?
-2. `repo_url` capped at 200 characters (GitHub owner and repository names are far shorter). OK?
+1. **Question:** no minimum or maximum character limit in the schema or the database (`TEXT`).
+   The only bound is the request body cap (`max_request_body_bytes`, default 64 KiB), so a
+   question cannot be unbounded in practice. An empty question is not rejected by length.
+2. **`repo_url`:** the cap is the `max_repo_url_length` setting (default 200, enough for any
+   GitHub URL of about 160 characters). The column is `VARCHAR(2048)`, so the setting can be
+   raised to 2048 without a migration; the setting is rejected above that.

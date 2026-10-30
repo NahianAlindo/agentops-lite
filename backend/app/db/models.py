@@ -13,7 +13,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.enums import EventStatus, JobStatus
-from app.core.limits import MAX_CODE_LENGTH, MAX_REPO_URL_LENGTH
+from app.core.limits import MAX_CODE_LENGTH, REPO_URL_COLUMN_LENGTH
 from app.db.base import Base, str_enum
 
 EMPTY_JSON_ARRAY = text("'[]'::jsonb")
@@ -25,7 +25,7 @@ class AnalysisJob(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     # Normalized https://github.com/<owner>/<repo> form.
-    repo_url: Mapped[str] = mapped_column(String(MAX_REPO_URL_LENGTH))
+    repo_url: Mapped[str] = mapped_column(String(REPO_URL_COLUMN_LENGTH))
     question: Mapped[str] = mapped_column(Text)
     status: Mapped[JobStatus] = mapped_column(
         str_enum(JobStatus, "job_status"),
